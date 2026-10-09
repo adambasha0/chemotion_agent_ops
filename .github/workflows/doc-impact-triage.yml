@@ -36,6 +36,10 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  # Pull request comments live behind the ISSUES endpoints, so listing them to
+  # find our own comment needs this even though the subject is a PR. Without
+  # it the list 403s and, under `set -o pipefail`, took the whole step down.
+  issues: write
 
 jobs:
   triage:
@@ -127,12 +131,14 @@ jobs:
           fi
           # A marker so a re-run edits its own comment instead of adding one.
           printf '\n<!-- doc-impact-triage -->\n' >> /tmp/triage.md
-          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
+          # Finding the previous comment is an optimisation, not the job:
+          # tolerate a failure here rather than losing the comment entirely.
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
                  --jq '.[] | select(.body | contains("<!-- doc-impact-triage -->")) | .id' \
-               | head -1)
-          if [ -n "$id" ]; then
-            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" \
-              -F body=@/tmp/triage.md
+               2>/tmp/list.err | head -1 || true)
+          [ -s /tmp/list.err ] && { echo "could not list comments:" >&2; cat /tmp/list.err >&2; }
+          if [ -n "${id:-}" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@/tmp/triage.md
           else
             gh pr comment "$PR" --body-file /tmp/triage.md
           fi

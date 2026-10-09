@@ -161,9 +161,13 @@ jobs:
             printf '\n> No `ANTHROPIC_API_KEY` is configured, so this is the mechanical pre-check only — no agent read the report.\n' >> /tmp/triage.md
           fi
           printf '\n<!-- issue-triage -->\n' >> /tmp/triage.md
-          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" \
-                 --jq '.[] | select(.body | contains("<!-- issue-triage -->")) | .id' | head -1)
-          if [ -n "$id" ]; then
+          # Tolerate a failed lookup: editing our own comment is an
+          # optimisation, posting one is the job.
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" --paginate \
+                 --jq '.[] | select(.body | contains("<!-- issue-triage -->")) | .id' \
+               2>/tmp/list.err | head -1 || true)
+          [ -s /tmp/list.err ] && { echo "could not list comments:" >&2; cat /tmp/list.err >&2; }
+          if [ -n "${id:-}" ]; then
             gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@/tmp/triage.md
           else
             gh issue comment "$ISSUE" --body-file /tmp/triage.md
