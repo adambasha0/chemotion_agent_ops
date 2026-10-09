@@ -4,9 +4,17 @@
 # calls the reusable workflow in chemotion_agent_ops, which comments. Nothing
 # in the ELN repo is written.
 #
-# UNTESTED. Verify the reusable-workflow reference resolves (private repos must
-# allow it under Settings > Actions) and that ANTHROPIC_API_KEY exists as an
-# org or repo secret.
+# UNTESTED, and one thing here will not work as written: a PRIVATE repo owned
+# by a USER cannot be called as a reusable workflow from another owner's repo.
+# ComPlat/chemotion_ELN therefore cannot `uses:` the line below while
+# chemotion_agent_ops lives under adambasha0 and is private. Options, cheapest
+# first:
+#   1. copy doc-impact-triage.yml into chemotion_ELN as a normal workflow and
+#      check this repo out inside it (actions/checkout with a PAT) - works today
+#   2. transfer chemotion_agent_ops to ComPlat and allow org access under
+#      Settings > Actions - then this file works unchanged
+#   3. make chemotion_agent_ops public - a public user repo can be called
+# Also verify ANTHROPIC_API_KEY exists as an org or repo secret.
 name: Doc impact
 
 on:
@@ -29,7 +37,7 @@ jobs:
       (github.event.action == 'opened' ||
        contains(fromJSON('["new feature","enhancement","bug"]'),
                 github.event.label.name))
-    uses: ComPlat/chemotion_agent_ops/.github/workflows/doc-impact-triage.yml@main
+    uses: adambasha0/chemotion_agent_ops/.github/workflows/doc-impact-triage.yml@main
     with:
       pr: ${{ github.event.pull_request.number }}
     secrets:

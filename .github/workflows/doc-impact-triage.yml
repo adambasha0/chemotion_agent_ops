@@ -53,7 +53,7 @@ jobs:
       - name: Check out the agent rules
         uses: actions/checkout@v4
         with:
-          repository: ComPlat/chemotion_agent_ops
+          repository: adambasha0/chemotion_agent_ops
           path: ops
 
       - name: Collect the diff
