@@ -38,7 +38,7 @@ const APP_CONTAINER = process.env.ELN_APP_CONTAINER || 'chemotion_capture-app-1'
 const ELN_EXEC = process.env.ELN_EXEC
   || `docker exec -i ${APP_CONTAINER} bash -lc`;
 // The tree the app serves, so a sidecar can record the SHA that was filmed.
-const WT = process.env.ELN_TREE || '/home/dolma/repo/chemotion_ELN';
+const WT = process.env.ELN_TREE || path.join(process.env.HOME || '', 'repo/chemotion_ELN');
 // Where flows write. One directory per task, created by the runner.
 const ROOT = process.env.CAPTURE_ROOT || path.resolve(__dirname, '..');
 // A flow writes next to itself, in harness/tasks/<task>/out - the layout the

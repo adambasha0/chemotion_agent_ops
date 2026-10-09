@@ -1,11 +1,10 @@
 # Running both repos on Dokploy
 
 The preferred way to get an instance: no stack to boot, and a GitHub-hosted
-runner can drive it over HTTPS. Condensed from the ComPlat Dokploy runbook —
-procedure A was executed end to end there, procedure B's field values were read
-from the compose file.
+runner can drive it over HTTPS. Condensed from the ComPlat Dokploy runbook — procedure A was executed end to
+end there, procedure B's field values were read from the compose file.
 
-Dokploy v0.30.6 · domain suffix `chemdev.scc.kit.edu`.
+Dokploy v0.30.6. `<suffix>` below is your Dokploy instance's domain suffix.
 
 ## A. chemotion_saurus — Application
 
@@ -18,7 +17,7 @@ live page.
    `/`. **Save**, then Build Type **Railpack**, **Save** again.
 3. **Environment** → `RAILPACK_SPA_OUTPUT_DIR=build`. The pre-filled
    `NODE_ENV` / `PORT` lines are placeholder text; type over them. **Save**.
-4. **Domains → Add Domain** → Host `<initials>-<name>-deploy.chemdev.scc.kit.edu`,
+4. **Domains → Add Domain** → Host `<initials>-<name>-deploy.<suffix>`,
    **Path `/docs`**, **Strip Path on**, Container Port `80`, HTTPS on,
    Let's Encrypt.
 5. **Deploy**. The site opens at `https://<host>/docs/`; the bare root serves
@@ -54,7 +53,8 @@ GitLab wiki omits both.
 ### If the seeded admin will not log in
 
 `rails` is not on `PATH` in a non-login shell because the asdf shims are not
-loaded:
+loaded. The password below is the documented development default on a
+disposable instance — never use it anywhere that holds real data:
 
 ```bash
 export PATH=/asdf/shims:$PATH
