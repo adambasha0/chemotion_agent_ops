@@ -75,6 +75,9 @@ flow then has to build its state through the app's own API and say so. See
 | `harness/lib/make_review.py` | rewritten here to discover tasks instead of carrying a hand-written list; smoke-tested only |
 | `rules/*`, `agents/*` | written down from practice; never executed as prompts |
 | `scripts/pre_triage.py` | run against two real diffs; catches the case that matters (docs naming a removed control, in all three trees) |
+| `scripts/release_inventory.py` | run on v3.1.2 → v3.1.3: 33 PRs classified, 22 fixes and 2 enhancements separated from the noise |
+| `scripts/audit_assets.py` | run on the real site: found two build-breaking missing images in v2, and that **none** of v3's 212 assets is exclusive to v3 |
+| `.github/workflows/issue-triage.yml` | mechanical half written and reviewed; the agent half untested |
 | `bin/teardown.sh` | written here; the compose half is the inverse of a command that ran many times, the Dokploy half is unverified |
 | `bin/dokploy.sh` | **unverified API paths.** `--dry-run` prints the calls; confirm them against your Dokploy |
 | `docs/DOKPLOY.md` | procedure A executed end to end; procedure B's values read from the compose file |
@@ -94,3 +97,22 @@ surface a missing variable or two.
 - **A merge button.** Nothing here merges anything.
 - **Credentials.** `env/eln.env` is gitignored; the example file is not a
   working one.
+
+## Jobs, and what triggers each
+
+| Agent | Trigger | Instance | Writes |
+|---|---|---|---|
+| 1 doc impact | PR opened, labelled, or agent assigned | none | a comment |
+| 2 capture + document | `docs:capture`, or a dispatch | yes — stopped afterwards | a draft PR on the docs site |
+| 3 E2E author | deferred | — | — |
+| 4 PR review | by hand | sometimes | a review file |
+| 5 issue triage | issue opened, or agent assigned | none | a comment |
+
+Agents 1 and 5 both run a deterministic pre-check first and comment even with
+no API key configured, so the plumbing is provable on its own and the model's
+judgement is an addition rather than a dependency.
+
+The release pass is not an agent in this table. It is an epic a person or an
+agent works through with the `release-docs` skill, using `release_inventory.py`
+to turn the range into a work list and `audit_assets.py` to retire assets
+without breaking the other version trees.

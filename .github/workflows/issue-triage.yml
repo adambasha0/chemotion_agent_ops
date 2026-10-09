@@ -1,0 +1,170 @@
+# Agent 5: verify a reported issue and recommend what to change.
+#
+# UNTESTED SKELETON for the agent half. Before trusting it, verify the inputs
+# and version of anthropics/claude-code-action, and that ANTHROPIC_API_KEY
+# exists. The mechanical half below runs without a key and comments on its own.
+#
+# It comments. It never closes an issue, never applies or removes a label, and
+# never reassigns - those are maintainer actions, and an agent performing them
+# is indistinguishable from one that got the verdict wrong.
+#
+# Triage here is READING, not reproducing: this runs on a GitHub-hosted runner
+# with no ELN. Reproducing a report needs an instance, which is the capture
+# workflow's job - this one says whether reproducing is worth someone's time.
+name: Issue triage
+
+on:
+  workflow_call:
+    inputs:
+      issue:
+        required: true
+        type: number
+      assignee:
+        description: who was assigned, when that is what triggered this
+        required: false
+        type: string
+      saurus_ref:
+        required: false
+        type: string
+        default: main
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: adambasha0/chemotion_agent_ops
+          path: ops
+
+      - name: Check out the ELN, for the code the report points at
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: eln
+
+      - name: Check out the docs site
+        uses: actions/checkout@v4
+        with:
+          repository: ComPlat/chemotion_saurus
+          ref: ${{ inputs.saurus_ref }}
+          path: saurus
+
+      - name: Gather the report and its neighbours
+        id: gather
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE: ${{ inputs.issue }}
+        run: |
+          set -euo pipefail
+          gh issue view "$ISSUE" --json number,title,body,labels,author,createdAt \
+            > /tmp/issue.json
+          title=$(python3 -c "import json;print(json.load(open('/tmp/issue.json'))['title'])")
+          # Candidate duplicates: search the symptom, not the title, so drop
+          # the conventional prefix and the punctuation before searching.
+          key=$(printf '%s' "$title" | sed -E 's/^[a-z]+(\([^)]*\))?!?: *//' \
+                 | tr -cd '[:alnum:] ' | cut -c1-80)
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          gh search issues --repo "$GH_REPO" --state all --limit 10 "$key" \
+            --json number,title,state,url > /tmp/similar.json || echo '[]' > /tmp/similar.json
+          python3 - <<'PY' > /tmp/pre.md
+          import json
+          i = json.load(open('/tmp/issue.json'))
+          sim = json.load(open('/tmp/similar.json'))
+          body = (i.get('body') or '')
+          out = ['## Issue triage — mechanical pre-check', '']
+          have = {
+              'a version or commit': any(w in body.lower() for w in
+                  ('v3.', 'v4.', 'version', 'commit', 'main', 'production')),
+              'steps to reproduce': any(w in body.lower() for w in
+                  ('step', 'reproduce', '1.', 'then ')),
+              'expected vs actual': ('expect' in body.lower()
+                                     or 'instead' in body.lower()
+                                     or 'actual' in body.lower()),
+              'a screenshot or log': any(w in body for w in
+                  ('![', 'http', '```', '.png', '.log')),
+          }
+          out.append('**What the report contains**')
+          out.append('')
+          for k, v in have.items():
+              out.append(f'- {"yes" if v else "**missing**"} — {k}')
+          out.append('')
+          missing = [k for k, v in have.items() if not v]
+          if missing:
+              out.append('Ask for ' + ', '.join(missing) + ' before spending an '
+                         'instance on this.')
+              out.append('')
+          others = [s for s in sim if s['number'] != i['number']]
+          if others:
+              out.append('**Possibly related, by symptom**')
+              out.append('')
+              for s in others[:8]:
+                  out.append(f'- #{s["number"]} ({s["state"].lower()}) {s["title"]}')
+              out.append('')
+              out.append('Links, not conclusions: matched on words from the title.')
+              out.append('')
+          print('\n'.join(out))
+          PY
+          cat /tmp/pre.md
+          cp /tmp/pre.md /tmp/triage.md
+
+      - name: Is an API key available?
+        id: key
+        env:
+          KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "${KEY:-}" ]; then echo "have=yes" >> "$GITHUB_OUTPUT";
+          else echo "have=no" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Triage
+        if: steps.key.outputs.have == 'yes'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Follow ops/claude-work/skills/issue-triage/SKILL.md exactly.
+
+            The report is in /tmp/issue.json, possible duplicates in
+            /tmp/similar.json, and a mechanical pre-check in /tmp/triage.md.
+            The ELN is checked out at ./eln and the documentation site at
+            ./saurus.
+
+            You have NO running instance, so you cannot reproduce anything.
+            Your verdict is therefore limited to: not enough information, a
+            duplicate, documented behaviour, a feature gate, or "worth
+            reproducing — here is where to look and what to run". Do not
+            report a bug as confirmed from reading code.
+            ${{ inputs.assignee && format('You were assigned by {0}. Triage and hand back; do not fix.', inputs.assignee) || '' }}
+
+            Rewrite /tmp/triage.md as the comment. Keep what you confirm from
+            the pre-check, say where you disagree. Edit nothing else, commit
+            nothing, open no pull request, and suggest labels as suggestions.
+
+      - name: Post or update the comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ inputs.issue }}
+          HAVE_KEY: ${{ steps.key.outputs.have }}
+        run: |
+          set -euo pipefail
+          [ -s /tmp/triage.md ] || { echo "nothing to post" >&2; exit 1; }
+          if [ "$HAVE_KEY" != "yes" ]; then
+            printf '\n> No `ANTHROPIC_API_KEY` is configured, so this is the mechanical pre-check only — no agent read the report.\n' >> /tmp/triage.md
+          fi
+          printf '\n<!-- issue-triage -->\n' >> /tmp/triage.md
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" \
+                 --jq '.[] | select(.body | contains("<!-- issue-triage -->")) | .id' | head -1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@/tmp/triage.md
+          else
+            gh issue comment "$ISSUE" --body-file /tmp/triage.md
+          fi

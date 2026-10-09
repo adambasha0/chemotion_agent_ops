@@ -16,6 +16,8 @@ cp -r claude-work/skills/* ~/.claude/skills/
 | Skill | Use it when |
 |---|---|
 | `ui-capture` | driving a real app in a browser to produce something someone will trust: documentation media, release evidence, an E2E check |
+| `release-docs` | updating the documentation site for a new ELN release or version — the epic, broken into an inventory, decisions, per-bullet work and an asset sweep |
+| `issue-triage` | verifying a reported issue before anyone fixes it: is it real, still present, a duplicate, and what should change |
 
 The skill is the principles — what to assert, how to pace a recording, the
 traps that silently produce convincing but wrong media. `docs/RUNBOOK.md` is

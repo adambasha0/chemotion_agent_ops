@@ -1,44 +1,71 @@
-# Add this to chemotion_ELN as .github/workflows/doc-impact.yml.
+# Add this to chemotion_ELN as .github/workflows/agent-triage.yml.
 #
-# It is the only change the ELN repo needs for the triage half: a label on a PR
-# calls the reusable workflow in chemotion_agent_ops, which comments. Nothing
-# in the ELN repo is written.
+# It is the only change the ELN repo needs. Three ways in:
+#   - a pull request is opened            -> doc impact triage
+#   - a pull request is labelled          -> doc impact triage
+#   - an agent is ASSIGNED to a PR        -> doc impact triage
+#   - an issue is opened                  -> issue triage
+#   - an agent is ASSIGNED to an issue    -> issue triage
 #
-# UNTESTED, and one thing here will not work as written: a PRIVATE repo owned
-# by a USER cannot be called as a reusable workflow from another owner's repo.
-# ComPlat/chemotion_ELN therefore cannot `uses:` the line below while
-# chemotion_agent_ops lives under adambasha0 and is private. Options, cheapest
-# first:
-#   1. copy doc-impact-triage.yml into chemotion_ELN as a normal workflow and
-#      check this repo out inside it (actions/checkout with a PAT) - works today
-#   2. transfer chemotion_agent_ops to ComPlat and allow org access under
-#      Settings > Actions - then this file works unchanged
-#   3. make chemotion_agent_ops public - a public user repo can be called
-# Also verify ANTHROPIC_API_KEY exists as an org or repo secret.
-name: Doc impact
+# Assignment is the deliberate hand-off: a maintainer assigns AGENT_HANDLE and
+# the triage runs, which is more precise than a label and leaves a record of
+# who asked. Set AGENT_HANDLE to the account that represents the agent (a bot
+# account, or your own handle while trying it out).
+#
+# Nothing here writes to either repository. Both called workflows only comment.
+#
+# UNTESTED, and one thing will not work as written: a PRIVATE repo owned by a
+# USER cannot be called as a reusable workflow from another owner's repo. The
+# source repo is public, so this resolves - but if it is ever made private
+# again, copy the workflows into chemotion_ELN instead.
+name: Agent triage
 
 on:
   pull_request_target:
-    # Opened: every new PR gets a verdict, which is what makes the pipeline
-    # useful without anyone remembering to label. Labeled: a verdict after the
-    # fact, when someone classifies an older PR.
-    types: [opened, labeled]
+    types: [opened, labeled, assigned]
+  issues:
+    types: [opened, assigned]
 
 permissions:
   contents: read
   pull-requests: write
+  issues: write
+
+env:
+  # The account whose assignment triggers a triage. One handle; add more in the
+  # `contains` checks below if you need a team.
+  AGENT_HANDLE: adambasha0
 
 jobs:
-  triage:
-    # Every new PR; on a labelling event, only the labels worth a second look.
-    # Draft PRs are skipped - they change too often to be worth a verdict.
+  pr-docs:
+    # A pull request: opened, labelled with something worth a second look, or
+    # assigned to the agent. Drafts are skipped - they change too often to be
+    # worth a verdict.
     if: >-
+      github.event_name == 'pull_request_target' &&
       github.event.pull_request.draft == false &&
       (github.event.action == 'opened' ||
-       contains(fromJSON('["new feature","enhancement","bug"]'),
-                github.event.label.name))
+       (github.event.action == 'labeled' &&
+        contains(fromJSON('["new feature","enhancement","bug","feature"]'),
+                 github.event.label.name)) ||
+       (github.event.action == 'assigned' &&
+        github.event.assignee.login == 'adambasha0'))
     uses: adambasha0/chemotion_agent_ops/.github/workflows/doc-impact-triage.yml@main
     with:
       pr: ${{ github.event.pull_request.number }}
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+  issue:
+    # An issue: opened, or assigned to the agent.
+    if: >-
+      github.event_name == 'issues' &&
+      (github.event.action == 'opened' ||
+       (github.event.action == 'assigned' &&
+        github.event.assignee.login == 'adambasha0'))
+    uses: adambasha0/chemotion_agent_ops/.github/workflows/issue-triage.yml@main
+    with:
+      issue: ${{ github.event.issue.number }}
+      assignee: ${{ github.event.assignee.login }}
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

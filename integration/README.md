@@ -5,11 +5,24 @@ installing them.
 
 ## chemotion_ELN
 
-Copy `eln-side-snippet.yml` to `.github/workflows/doc-impact.yml`. That is the
-whole change. Every new PR gets a comment, and so does a PR labelled
-`new feature`, `enhancement` or `bug` later on. Nothing in the ELN repo is
-written and no instance is booted. A re-run edits its own comment rather than
-adding a second one.
+Copy `eln-side-snippet.yml` to `.github/workflows/agent-triage.yml`. That is
+the whole change. It fires on:
+
+| Event | What runs |
+|---|---|
+| a PR is opened | doc impact triage |
+| a PR is labelled `new feature` / `enhancement` / `bug` / `feature` | doc impact triage |
+| the agent is **assigned** to a PR | doc impact triage |
+| an issue is opened | issue triage |
+| the agent is **assigned** to an issue | issue triage |
+
+Assignment is the deliberate hand-off — more precise than a label, and it
+records who asked. Set `AGENT_HANDLE` in the snippet, and update the two
+`github.event.assignee.login` comparisons to match it (GitHub expressions
+cannot read `env` in a job-level `if`).
+
+Nothing in the ELN repo is written and no instance is booted. A re-run edits
+its own comment rather than adding a second one.
 
 `pull_request_target` runs the workflow from the base branch, so a PR cannot
 alter what runs. The job never checks out the PR head as code it executes — it

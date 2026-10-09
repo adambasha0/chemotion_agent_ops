@@ -25,7 +25,7 @@ NOT_A_LABEL = re.compile(r"""^(?:[a-z0-9_.\-/]+|[A-Z0-9_]+|\s*|.*[{}<>$\\].*|
 # A class list reads like a sentence to the rule above: several words, letters,
 # no punctuation. Nothing a user ever sees is entirely lowercase hyphenated
 # tokens, so drop those - "d-inline-flex align-items-center" is not a label.
-CSS_LIKE = re.compile(r'^[a-z0-9]+(?:[-:][a-z0-9]+)*(?:\s+[a-z0-9]+(?:[-:][a-z0-9]+)*)+$')
+CSS_LIKE = re.compile(r'^[a-z0-9]+(?:[-:_][a-z0-9]+)*(?:\s+[a-z0-9]+(?:[-:_][a-z0-9]+)*)+$')
 DOC_EXT = ('.mdx', '.md')
 
 

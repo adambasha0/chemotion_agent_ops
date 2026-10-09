@@ -15,6 +15,8 @@ that was done by hand first — the provenance of each piece is in
 | know why a run can be refused | [rules/evidence-gate.md](rules/evidence-gate.md) |
 | edit the documentation site | [rules/saurus-docs.md](rules/saurus-docs.md) |
 | automate the docs update | [docs/PIPELINE.md](docs/PIPELINE.md) |
+| document a whole release | [claude-work/skills/release-docs](claude-work/skills/release-docs/SKILL.md) |
+| triage a reported issue | [claude-work/skills/issue-triage](claude-work/skills/issue-triage/SKILL.md) |
 | get an instance on Dokploy | [docs/DOKPLOY.md](docs/DOKPLOY.md) |
 | add E2E coverage (deferred) | [agents/03-e2e-author.md](agents/03-e2e-author.md) |
 | pick this up as a new agent | [claude-work/README.md](claude-work/README.md) |
@@ -39,7 +41,8 @@ npm install
 ## Layout
 
 ```
-bin/        dokploy, run, restart, seed, lint, spec, capture, review, publish
+bin/        dokploy, run, restart, seed, lint, spec, capture, review, publish, teardown
+scripts/    deterministic analysis: pre-triage, release inventory, asset audit
 env/        the compose file and the one env file everything reads
 harness/    lib/    the driver: pointer, pacing, assertions, trim, sidecars
             tasks/  one directory per user journey; TEMPLATE/ to copy
