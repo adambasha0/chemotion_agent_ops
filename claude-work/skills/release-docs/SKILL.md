@@ -112,7 +112,12 @@ is: remove the reference, keep the file.
 The audit also reports:
 
 - **referenced but not on disk** - `onBrokenMarkdownImages` is `throw`, so each
-  one fails the build. There are two of these in v2 today.
+  one fails the build. The audit only counts pages that are actually built:
+  Docusaurus excludes underscore-prefixed paths (`**/_*/**`) from every docs
+  plugin, so a dangling image on one of those breaks nothing. Pass
+  `--include-excluded` to see them anyway - they are untidy, not urgent. Three
+  such references existed in the v2 tree, left behind when a cleanup deleted
+  the images from the shared namespace but scoped `versioned_docs` out.
 - **referenced by nothing** - left behind by an earlier edit. Check `git log`
   before deleting; an asset can be waiting for a branch that has not merged.
 

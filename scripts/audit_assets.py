@@ -20,6 +20,17 @@ IMG = re.compile(r'(?:src=["\']|\]\(|url\(["\']?)(/?[\w./-]*?img/[\w./-]+?\.'
                  r'(?:png|jpe?g|gif|webp|svg|webm|mp4))')
 EXT = ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.webm', '.mp4')
 DOC_EXT = ('.mdx', '.md')
+# Docusaurus excludes these from every docs plugin by default, so a page under
+# one of them publishes nothing and its dangling images break no build. Getting
+# this wrong once cost a wrong conclusion: two "build-breaking" references
+# reported on pages that are not built at all.
+#   plugin-content-docs default exclude:
+#   ['**/_*.{js,jsx,ts,tsx,md,mdx}', '**/_*/**', '**/*.test.*', '**/__tests__/**']
+def excluded(relpath):
+    parts = relpath.split(os.sep)
+    return (any(p.startswith('_') for p in parts[:-1])
+            or parts[-1].startswith('_')
+            or '__tests__' in parts)
 
 
 def trees(docs):
@@ -34,7 +45,7 @@ def trees(docs):
     return out
 
 
-def refs_in_tree(docs, rel):
+def refs_in_tree(docs, rel, include_excluded=False):
     """{normalised img path -> [pages that reference it]}"""
     found = defaultdict(list)
     root = os.path.join(docs, rel)
@@ -43,6 +54,9 @@ def refs_in_tree(docs, rel):
             if not n.endswith(DOC_EXT):
                 continue
             page = os.path.relpath(os.path.join(dirpath, n), docs)
+            if not include_excluded and excluded(os.path.relpath(
+                    os.path.join(dirpath, n), os.path.join(docs, rel))):
+                continue
             try:
                 body = open(os.path.join(dirpath, n), encoding='utf-8',
                             errors='replace').read()
@@ -60,6 +74,10 @@ def main():
     ap.add_argument('--docs', required=True)
     ap.add_argument('--tree', help='report one tree in detail (e.g. v3, current)')
     ap.add_argument('--json', action='store_true')
+    ap.add_argument('--include-excluded', action='store_true',
+                    help='also count pages Docusaurus excludes from the build '
+                         '(underscore-prefixed paths). Their dangling images '
+                         'break nothing, but they are still untidy.')
     a = ap.parse_args()
 
     tr = trees(a.docs)
@@ -75,7 +93,8 @@ def main():
             if n.lower().endswith(EXT):
                 on_disk.add(os.path.relpath(os.path.join(dirpath, n), static))
 
-    per_tree = {name: refs_in_tree(a.docs, rel) for name, rel in tr.items()}
+    per_tree = {name: refs_in_tree(a.docs, rel, a.include_excluded)
+                for name, rel in tr.items()}
     users = defaultdict(set)
     for name, refs in per_tree.items():
         for p in refs:
@@ -110,7 +129,9 @@ def main():
         o.append('## Referenced but not on disk')
         o.append('')
         o.append('`onBrokenMarkdownImages` is `throw`, so each of these fails '
-                 'the build.')
+                 'the build.' + (' Pages Docusaurus excludes are counted here '
+                 'too because --include-excluded was passed; those break '
+                 'nothing.' if a.include_excluded else ''))
         o.append('')
         for p in missing:
             o.append(f'- `{p}` ← ' + ', '.join(

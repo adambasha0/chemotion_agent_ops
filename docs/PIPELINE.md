@@ -76,7 +76,7 @@ flow then has to build its state through the app's own API and say so. See
 | `rules/*`, `agents/*` | written down from practice; never executed as prompts |
 | `scripts/pre_triage.py` | run against two real diffs; catches the case that matters (docs naming a removed control, in all three trees) |
 | `scripts/release_inventory.py` | run on v3.1.2 → v3.1.3: 33 PRs classified, 22 fixes and 2 enhancements separated from the noise |
-| `scripts/audit_assets.py` | run on the real site: found two build-breaking missing images in v2, and that **none** of v3's 212 assets is exclusive to v3 |
+| `scripts/audit_assets.py` | run on the real site: found that **none** of v3's 212 assets is exclusive to v3, and three dangling references in a v2 directory Docusaurus excludes from the build (reported at first as build-breaking, which was wrong — the script now honours the exclusion) |
 | `.github/workflows/issue-triage.yml` | mechanical half written and reviewed; the agent half untested |
 | `bin/teardown.sh` | written here; the compose half is the inverse of a command that ran many times, the Dokploy half is unverified |
 | `bin/dokploy.sh` | **unverified API paths.** `--dry-run` prints the calls; confirm them against your Dokploy |
