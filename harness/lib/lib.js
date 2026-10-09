@@ -31,6 +31,12 @@ const USERS = {
 // project's container, never the development stack's: rails() writes, and the
 // development database is not ours to write.
 const APP_CONTAINER = process.env.ELN_APP_CONTAINER || 'chemotion_capture-app-1';
+// How a shell command reaches that container. Local docker by default; set
+// ELN_EXEC to reach an instance that is not on this machine, e.g.
+//   ELN_EXEC='ssh dokploy-host docker exec -i <container> bash -lc'
+// The command is given one argument: the shell line to run.
+const ELN_EXEC = process.env.ELN_EXEC
+  || `docker exec -i ${APP_CONTAINER} bash -lc`;
 // The tree the app serves, so a sidecar can record the SHA that was filmed.
 const WT = process.env.ELN_TREE || '/home/dolma/repo/chemotion_ELN';
 // Where flows write. One directory per task, created by the runner.
@@ -46,6 +52,40 @@ function defaultOut() {
 }
 const OUT = process.env.CAPTURE_OUT || defaultOut();
 const WORK = process.env.CAPTURE_WORK || path.join(ROOT, 'work');
+
+// Tempo. One place on purpose: the trim budget below must sit ABOVE the pause
+// the pacing asks for, or the trimmer quietly clips every deliberate pause and
+// the take feels rushed for reasons invisible in the flow code. Raising a pause
+// here without raising STILL_BUDGET is the bug.
+//
+// Defaults: the pointer sits 1.5 s on a control before pressing, the effect
+// renders for 0.6 s with the pointer still on it, and the screen then holds
+// 1.5 s before the next move. A viewer sees roughly 3 s between one press and
+// the next, of which about 2 s is a still screen showing what just happened.
+// Tune with CAPTURE_PAUSE_BEFORE / CAPTURE_SETTLE / CAPTURE_PAUSE_AFTER /
+// CAPTURE_GLIDE, in ms.
+const ms = (name, dflt) => {
+  const v = parseInt(process.env[name] || '', 10);
+  return Number.isFinite(v) && v >= 0 ? v : dflt;
+};
+const PACE = {
+  arrive: ms('CAPTURE_PAUSE_BEFORE', 1500),
+  settle: ms('CAPTURE_SETTLE', 600),
+  after: ms('CAPTURE_PAUSE_AFTER', 1500),
+  glide: ms('CAPTURE_GLIDE', 480),
+};
+// Frames at 12 fps. 26 is ~2.17 s, which is above PACE.after, so a deliberate
+// pause survives the trim; 30 is ~2.5 s to read the final state.
+const STILL_BUDGET = ms('CAPTURE_STILL_BUDGET', 26);
+const TAIL_HOLD = ms('CAPTURE_TAIL_HOLD', 30);
+// Refuse the combination rather than discovering it in a take that feels
+// rushed: a budget at or below the pause means every deliberate pause is
+// trimmed back under what the flow asked for.
+if (STILL_BUDGET / 12 * 1000 <= PACE.after) {
+  throw new Error(`CAPTURE_STILL_BUDGET (${STILL_BUDGET} frames = `
+    + `${Math.round(STILL_BUDGET / 12 * 1000)}ms) must exceed CAPTURE_PAUSE_AFTER `
+    + `(${PACE.after}ms), or the trim clips every pause the pacing asks for`);
+}
 
 const CURSOR_SCRIPT = `
 (() => {
@@ -93,6 +133,7 @@ class Driver {
     this.page = page; this.x = 720; this.y = 500; this.asserts = [];
     this.t0 = Date.now();        // set again by startSession once recording begins
     this.startOffsetMs = 0;      // everything before this is cut from the take
+    this.marked = false;         // whether the flow said where the take begins
     this.holds = [];             // windows the trimmer must not collapse
   }
 
@@ -101,7 +142,12 @@ class Driver {
   // camera - the ELN landing page, the admin dashboard, a profile overlay -
   // and none of that belongs in an animation about one control. Call this once
   // the starting screen is on screen; the encoder drops every frame before it.
+  // Where the take begins. Everything before it - the landing page, the
+  // navigation, a dashboard the reader never asked to see - is dropped. Call
+  // it once the screen under discussion is up: the point a reader would expect
+  // to start from, not ground zero.
   markStart() {
+    this.marked = true;
     this.startOffsetMs = Date.now() - this.t0;
     console.log(`  [mark] take starts at +${(this.startOffsetMs / 1000).toFixed(1)}s`);
   }
@@ -128,12 +174,14 @@ class Driver {
   // arrival; settle keeps the pointer on the control while the effect renders
   // instead of leaving for the next target in the same frame.
   async click(locator, opts = {}) {
-    // Defaults are deliberately slow. A documentation animation is read, not
-    // skimmed: the pointer must sit on a control for a beat before pressing,
-    // and the result must stay up for a beat after, or a viewer cannot tell
-    // which control caused what. Nothing here is shorter than a second.
-    const { glideMs = 420, pauseBefore = 1000, settle = 450, pauseAfter = 1000,
-            dx = 0, dy = 0, jump = false } = opts;
+    // Deliberately slow, from PACE. A documentation animation is read, not
+    // skimmed: the pointer must sit on a control before pressing, and the
+    // result must stay up after, or a viewer cannot tell which control caused
+    // what. Every override below is a FLOOR, not a licence to go faster -
+    // per-call pauses left under PACE are the usual way a pacing change gets
+    // silently undone.
+    const { glideMs = PACE.glide, pauseBefore = PACE.arrive, settle = PACE.settle,
+            pauseAfter = PACE.after, dx = 0, dy = 0, jump = false } = opts;
     await locator.waitFor({ state: 'visible', timeout: 15000 });
 
     const vp = this.page.viewportSize();
@@ -213,14 +261,17 @@ class Driver {
   // no visible interaction at all - the classic "the effect happened before
   // anyone clicked anything" frame. Press the control first, then change it.
   async select(locator, option, opts = {}) {
-    await this.click(locator, { pauseAfter: 500, ...opts });
+    await this.click(locator, { pauseAfter: PACE.settle, ...opts });
     await locator.selectOption(option);
-    await sleep(1200);      // the chosen value must be readable before moving on
+    // The chosen value must be readable before anything else moves.
+    await sleep(PACE.after);
   }
 
   // Same reasoning for clearing a field: fill('') mutates it invisibly.
   async clear(locator) {
-    await this.click(locator, { pauseAfter: 160 });
+    // The short sleeps below are keystroke timing inside one action, not the
+    // gap between two actions, so they are not PACE.
+    await this.click(locator, { pauseAfter: 200 });
     await locator.press('Control+a');
     await sleep(220);
     await locator.press('Delete');
@@ -235,7 +286,7 @@ class Driver {
   // activated. The pointer still appears on each target, it just does not
   // sweep there.
   async clickPlain(locator, opts = {}) {
-    const { pauseBefore = 1000, pauseAfter = 1200 } = opts;
+    const { pauseBefore = PACE.arrive, pauseAfter = PACE.after } = opts;
     await locator.waitFor({ state: 'visible', timeout: 20000 });
     const b = await locator.boundingBox();
     if (b) {
@@ -271,7 +322,7 @@ class Driver {
   async type(locator, text, delay = 85, opts = {}) {
     const { replace = false } = opts;
     if (replace) await this.clear(locator);
-    else await this.click(locator, { pauseAfter: 180 });
+    else await this.click(locator, { pauseAfter: PACE.settle });
     await locator.type(text, { delay });
     await sleep(520);   // let the form react before the pointer moves away
   }
@@ -456,7 +507,7 @@ async function openAdminLlmConfig(drv) {
     }
   }
   await sleep(900);
-  await drv.click(entry, { pauseAfter: 900 });
+  await drv.click(entry, { pauseAfter: PACE.after });
   // Wait for the real heading, not the spinner that reads "Loading AI configuration…".
   await page.getByRole('heading', { name: 'AI / LLM Configuration' })
     .waitFor({ state: 'visible', timeout: 60000 });
@@ -483,7 +534,7 @@ async function openUserLlmSettings(drv) {
   // react-aria one, so position is the only stable handle.
   const userMenu = page.locator('.btn-topbar.dropdown-toggle').last();
   await userMenu.waitFor({ state: 'visible', timeout: 30000 });
-  await drv.clickPlain(userMenu, { pauseAfter: 900 });
+  await drv.clickPlain(userMenu, { pauseAfter: PACE.after });
 
   // Scope to the OPEN menu. An unscoped getByRole('button', {name:'Settings'})
   // resolves somewhere else on the page and clicks nothing useful.
@@ -498,11 +549,11 @@ async function openUserLlmSettings(drv) {
   // Short hop, not a sweep: gliding far across the page leaves the trigger and
   // the menu closes mid-flight.
   for (let attempt = 1; ; attempt++) {
-    await drv.clickPlain(settings, { pauseAfter: 1300 });
+    await drv.clickPlain(settings, { pauseAfter: PACE.after });
     if (await overlayOpen.isVisible().catch(() => false)) break;
     assert(attempt < 3, 'the Settings menu item opened the profile overlay');
     console.log(`  [retry ${attempt}] Settings did not open the overlay`);
-    await drv.clickPlain(userMenu, { pauseAfter: 900 });
+    await drv.clickPlain(userMenu, { pauseAfter: PACE.after });
     await menu.waitFor({ state: 'visible', timeout: 10000 });
   }
 
@@ -514,7 +565,7 @@ async function openUserLlmSettings(drv) {
   drv.markStart();
   await drv.clickUntil(entry,
     page.getByText('AI / LLM Settings', { exact: true }).first(),
-    { pauseAfter: 1200 });
+    { pauseAfter: PACE.after });
 
   await page.getByText('AI / LLM Settings', { exact: true })
     .first().waitFor({ state: 'visible', timeout: 30000 });
@@ -574,8 +625,15 @@ async function expectAlert(drv, text, variant = 'success') {
 function rails(code) {
   // The script goes in on stdin ("rails runner -"), not as an argv string:
   // multi-line Ruby inside a shell argument breaks on the first newline.
-  const out = execFileSync('docker', [
-    'exec', '-i', APP_CONTAINER, 'bash', '-lc',
+  //
+  // ELN_EXEC is whatever reaches the app's shell - local docker, or ssh then
+  // docker on the host that runs the deployment. A deployed instance you have
+  // no shell on cannot be seeded this way: either arrange one, or write the
+  // flow to build its state through the app's own API, and say in the task
+  // which it does.
+  const argv = ELN_EXEC.trim().split(/\s+/);
+  const out = execFileSync(argv[0], [
+    ...argv.slice(1),
     'cd /home/ubuntu/app && bundle exec rails runner -',
   ], { input: code, maxBuffer: 32 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'] }).toString();
   // Rails dev boot chatter precedes anything we print; our own output is
@@ -765,15 +823,15 @@ for k in range(1, len(px)):
 
 FPS = 12
 THRESH = 1.2
+STILL_BUDGET = int(sys.argv[5]) if len(sys.argv) > 5 else 26
+TAIL_HOLD    = int(sys.argv[6]) if len(sys.argv) > 6 else 30
 # Every still stretch collapses to the same beat - long enough to register the
 # step that just happened, short enough that the recording never feels idle.
-# Previously only stretches over 1.7 s were touched, and everything shorter
-# played in full, which is what made the takes feel slack.
-# 14 frames at 12 fps is 1.17 s. The budget is the CAP on a still stretch, so
-# it has to sit above the second the pacing asks for, or the trim would quietly
-# shorten every deliberate pause back below it.
-STILL_BUDGET = 14
-TAIL_HOLD    = 26          # frames -> ~2.2 s to read the final state
+# Collapsing only the LONG pauses, as this once did, is what made takes feel
+# slack: the budget applies to every still stretch, short ones included.
+#
+# The budget is the CAP on a still stretch, so it must sit above the pause the
+# pacing asks for. It is passed in from PACE rather than written here twice.
 
 last = len(diffs) - 1
 while last > 0 and diffs[last] < THRESH:
@@ -809,14 +867,23 @@ print(json.dumps({'sourceFrames': len(frames) + dropped_head, 'keptFrames': len(
   const pf = path.join(tmp, 'enc.py');
   fs.writeFileSync(pf, py);
   const res = JSON.parse(execFileSync('python3', [pf, tmp, destWebp, String(startOffsetMs),
-    JSON.stringify(holds)],
+    JSON.stringify(holds), String(STILL_BUDGET), String(TAIL_HOLD)],
     { maxBuffer: 256 * 1024 * 1024 }).toString().trim().split('\n').pop());
   fs.rmSync(tmp, { recursive: true, force: true });
   return res;
 }
 
 function gitSha() {
-  return execFileSync('git', ['-C', WT, 'rev-parse', 'HEAD']).toString().trim();
+  // A sidecar without a commit is one nobody can reproduce, so this refuses
+  // rather than recording null. On a deployed instance there is no local tree
+  // to ask, and the workflow passes the ref it deployed as ELN_SHA.
+  if (process.env.ELN_SHA) return process.env.ELN_SHA.trim();
+  try {
+    return execFileSync('git', ['-C', WT, 'rev-parse', 'HEAD']).toString().trim();
+  } catch (e) {
+    throw new Fail('no ELN commit to record: set ELN_SHA for a deployed '
+      + `instance, or ELN_TREE to a checkout (tried ${WT})`);
+  }
 }
 
 async function finish({ browser, context, page, videoDir, drv }, name, extra = {}) {
@@ -831,8 +898,16 @@ async function finish({ browser, context, page, videoDir, drv }, name, extra = {
   // substitution this harness exists to prevent.
   const stats = trimAndEncode(raw, dest, drv.startOffsetMs, drv.holds);
   const buf = fs.readFileSync(dest);
+  // A take that never marked its start opens on whatever it took to get
+  // there. That is not an encoding detail a reader forgives, so it is recorded
+  // and shown on the review page rather than left to be noticed in the file.
+  if (!drv.marked) {
+    console.warn('  [warn] this flow never called drv.markStart(): the take '
+      + 'opens on the navigation that led to the subject');
+  }
   const meta = {
     flow: name,
+    start_marked: drv.marked,
     script: require.main ? path.relative(ROOT, require.main.filename) : null,
     work_dir: path.basename(videoDir),
     git_sha: gitSha(),
@@ -852,7 +927,7 @@ async function finish({ browser, context, page, videoDir, drv }, name, extra = {
 }
 
 module.exports = {
-  BASE, USERS, OUT, WORK, WT, APP_CONTAINER, sleep, assert, Fail, Driver, startSession, login,
+  BASE, USERS, OUT, WORK, WT, APP_CONTAINER, ELN_EXEC, PACE, sleep, assert, Fail, Driver, startSession, login,
   openAdminLlmConfig, openUserLlmSettings, dismissBanners, waitForAppReady,
   clearPendingNotices,
   expectAlert, shot, rails, warmup,

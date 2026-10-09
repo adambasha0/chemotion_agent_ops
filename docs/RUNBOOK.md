@@ -8,7 +8,22 @@ https://claude.ai/artifact/Q86WrE4wNgcv31xEWotEFA
 
 Once: `cp env/eln.env.example env/eln.env`, edit it, `npm install`.
 
-## A. Run the ELN — `./bin/eln-up.sh`, re-runnable
+## A. Get an instance
+
+Two ways. Prefer the first.
+
+**Dokploy (preferred).** A deployed instance needs no stack booted and can be
+driven from a GitHub-hosted runner. `docs/DOKPLOY.md` has the procedure for
+both repos, the two settings the GitLab wiki omits, and the one thing a
+deployment cannot give you for free: a shell for fixtures, which `ELN_EXEC`
+must supply.
+
+```bash
+./bin/dokploy.sh deploy eln <branch> && ./bin/dokploy.sh wait eln
+```
+
+**Local (fallback, and what you want while iterating on a flow).**
+`./bin/eln-up.sh`, re-runnable — six steps:
 
 1. **Worktree.** `git worktree add` the branch, then copy the gitignored
    working set (`.env`, `.env.development`, `config/*.yml`). A bare worktree
@@ -53,16 +68,41 @@ Copy `harness/tasks/TEMPLATE/flow.js`. Six beats:
 4. **Act.** `drv.click` (default), `clickPlain` (menus — a glide across a
    dropdown fires `mousemove` on every item and the press is swallowed),
    `clickUntil` (transient UI), `clear`+`select`, `type`, `hold(ms, why)`.
-   Never bare `fill`/`selectOption`. About 1 s to arrive, press, 450 ms to
-   settle, 1 s before the next move.
+   Never bare `fill`/`selectOption`.
 5. **Assert on the server**, then `drv.pass()` each proven claim. No proof, no
    file.
 6. **`shot()`** for a still — `locators: [a, b]` crops the union when a popover
    is portalled — or **`finish()`** for the animation.
 
-Pacing and trim are one setting: the trim caps a still stretch, so the cap must
-sit above the pause the pacing asks for, or every deliberate pause is quietly
-clipped and the take feels rushed for reasons invisible in the flow code.
+### Tempo
+
+One place, `PACE` at the top of `lib.js`, and every default is deliberately
+slow because a documentation animation is read rather than skimmed.
+
+| | Default | What it buys |
+|---|---|---|
+| `CAPTURE_PAUSE_BEFORE` | 1500 ms | the pointer sits on the control before pressing |
+| `CAPTURE_SETTLE` | 600 ms | the effect renders with the pointer still on it |
+| `CAPTURE_PAUSE_AFTER` | 1500 ms | the result holds before anything else moves |
+| `CAPTURE_GLIDE` | 480 ms | the move to the next target |
+
+So a viewer sees roughly 3 s between one press and the next, about 2 s of it a
+still screen showing what just happened.
+
+**Pacing and trim are one setting.** The trim caps every still stretch, so the
+cap must sit above the pause the pacing asks for or each deliberate pause is
+quietly clipped — a take that feels rushed for reasons invisible in the flow
+code. `CAPTURE_STILL_BUDGET` is a frame count at 12 fps (26 ≈ 2.17 s) and the
+harness refuses to start if it does not exceed `CAPTURE_PAUSE_AFTER`. Raise
+both or neither.
+
+### Start where the reader expects
+
+`drv.markStart()` is what keeps the sign-in, the landing page, the collection
+tree and the navigation out of the file. Call it on the screen a reader would
+expect to open on — not ground zero. A flow that never calls it records
+`start_marked: false` in its sidecar, the review page flags it, and the run
+warns; nothing silently ships a take that opens on the way there.
 
 ## C. Ship
 

@@ -17,7 +17,8 @@ PR labelled
    human agrees, adds docs:capture
         │
         └──────────────────────────────▶ Agent 2  capture + document
-                                          boots the branch   (self-hosted)
+                                          deploys the ref on Dokploy
+                                          (or boots it locally)
                                           runs the flows
                                           evidence gate ─── fails here, stops
                                           writes the prose
@@ -31,11 +32,26 @@ Two triggers, because the costs differ by three orders of magnitude.
 
 | | Trigger | Needs | Cost |
 |---|---|---|---|
-| Agent 1 | a label on a PR | the diff and the docs tree | seconds |
-| Agent 2 | `docs:capture`, or a dispatch | a booted ELN, seeded DB, worker | 20–40 min |
+| Agent 1 | a PR opened, or labelled | the diff and the docs tree | seconds |
+| Agent 2 | `docs:capture`, or a dispatch | an instance of that ref | 20–40 min |
 
-Running Agent 2 on every merge would boot an ELN dozens of times a week for
-changes nobody documents. Keep it behind an explicit label.
+Agent 1 runs on every new PR, so nothing depends on anyone remembering to
+label. Agent 2 stays behind an explicit label: running it on every merge would
+deploy an ELN dozens of times a week for changes nobody documents.
+
+## Where the instance comes from
+
+| | `dokploy` (default) | `local` (fallback) |
+|---|---|---|
+| Runner | GitHub-hosted | self-hosted, with docker |
+| Boot | `bin/dokploy.sh deploy` | `bin/eln-up.sh` |
+| Fixtures | `ELN_EXEC` must reach the app's shell | local `docker exec` |
+| Commit recorded | `ELN_SHA`, the ref deployed | read from the worktree |
+
+The fixture channel is the catch. `rails()` runs through whatever `ELN_EXEC`
+names, so a deployment with no shell access cannot be seeded that way — the
+flow then has to build its state through the app's own API and say so. See
+`docs/DOKPLOY.md`.
 
 ## Where the human stays
 
@@ -55,8 +71,10 @@ changes nobody documents. Keep it behind an explicit label.
 | `bin/capture.sh`, `review.sh`, `publish.sh` | ran for every asset currently in the docs |
 | `harness/lib/make_review.py` | rewritten here to discover tasks instead of carrying a hand-written list; smoke-tested only |
 | `rules/*`, `agents/*` | written down from practice; never executed as prompts |
+| `bin/dokploy.sh` | **unverified API paths.** `--dry-run` prints the calls; confirm them against your Dokploy |
+| `docs/DOKPLOY.md` | procedure A executed end to end; procedure B's values read from the compose file |
 | `.github/workflows/*` | **untested skeletons.** Each names what to verify at the top |
-| self-hosted runner | does not exist yet |
+| self-hosted runner | does not exist, and the dokploy path does not need one |
 
 The parameterisation is new: every script now reads `env/eln.env` instead of
 carrying one session's paths and passwords. Nothing has been re-run end to end
@@ -65,8 +83,9 @@ surface a missing variable or two.
 
 ## What this deliberately does not hold
 
-- **The Cypress suite.** Tests live in `chemotion_ELN`, with the code they
-  test. See `agents/03-e2e-author.md`.
+- **The Cypress suite.** Deferred, and when it happens it happens in
+  `chemotion_ELN` with the code it tests. `agents/03-e2e-author.md` holds the
+  plan.
 - **A merge button.** Nothing here merges anything.
 - **Credentials.** `env/eln.env` is gitignored; the example file is not a
   working one.

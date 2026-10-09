@@ -71,7 +71,14 @@ Mark where the subject begins and have the encoder drop every frame before it:
 drv.markStart();   // once the relevant screen is up
 ```
 
-On these captures that removed 15-22 s of navigation per take.
+Mark it at the screen a reader would expect to open on, not at ground zero: not
+the sign-in, not the landing page, not the collection tree on the way to the
+record. On these captures that removed 15-22 s of navigation per take.
+
+Record whether a flow marked at all, put it in the sidecar, and show it on the
+review page. A take that forgot opens on the way there, and that is not
+something a reader forgives - but it is easy to miss when you already know
+where to look.
 
 ## 4. Never record the login
 
@@ -105,11 +112,18 @@ interaction and followed by a beat.
   element and move it with the same coordinates you dispatch, plus a ripple on
   press. Attach it on `DOMContentLoaded` - `document.documentElement` is null
   when an init script runs, and the injection silently never happens.
-- **Arrive, then press.** Pause ~1 s with the pointer on the control before
+- **Arrive, then press.** Pause ~1.5 s with the pointer on the control before
   pressing, so a viewer sees what is about to be clicked. 400 ms felt
-  sufficient while building it and was reported as too fast by the reader.
-- **Stay, then leave.** Hold ~450 ms after the press so the effect renders
-  while the pointer is still on the control, then ~1 s before the next action.
+  sufficient while building it, 1 s was still reported as too fast, and 1.5 s
+  is where the reader stopped complaining. Err slow: nobody has ever asked for
+  a documentation animation to move faster.
+- **Stay, then leave.** Hold ~600 ms after the press so the effect renders
+  while the pointer is still on the control, then ~1.5 s before the next
+  action. A viewer then sees roughly 3 s between presses, about 2 s of it a
+  still screen showing what just happened.
+- **Keep the tempo in one place.** Four numbers in one object that every call
+  defaults to, overridable by environment variable. Scattered literals are how
+  a pacing change silently fails to take.
 - **Raise every explicit override too.** Per-call pauses left below the new
   floor silently undo a change to the defaults. Grep for them.
 - **`selectOption` and `fill` change state invisibly.** Click the control first,
@@ -125,8 +139,8 @@ consecutive frames, and drop dead frames - but collapse **every** still stretch
 to the same budget, not only the long ones. Collapsing only long pauses leaves
 the take feeling slack.
 
-A good default: sample and play back at the same rate (12 fps), allow ~14
-frames (~1.17 s) for any still stretch between actions, and ~26 frames (~2.2 s)
+A good default: sample and play back at the same rate (12 fps), allow ~26
+frames (~2.2 s) for any still stretch between actions, and ~30 frames (~2.5 s)
 at the end so the final state is readable. Sampling and playing at the same rate
 matters: resampling silently changes how long every pause actually lasts.
 
@@ -134,7 +148,8 @@ matters: resampling silently changes how long every pause actually lasts.
 caps a still stretch, so it must sit above the pause the pacing asks for. Set a
 1 s pause against a 1 s cap and the trim quietly clips every deliberate pause
 back under a second, and the recording still feels rushed for reasons that are
-invisible in the flow code.
+invisible in the flow code. Better than remembering: have the harness refuse to
+start when the budget does not exceed the pause.
 
 **Give the flow a way to protect a specific pause.** When a step has to last a
 stated time - "two seconds on the edited field before saving" - an ordinary

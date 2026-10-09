@@ -1,5 +1,11 @@
 # Agent 3 — E2E author
 
+> **Deferred.** Not being worked on. The documentation pipeline comes first;
+> this file is the plan for when it is picked up, including the one finding
+> worth keeping in view: the ELN's Cypress suite already exists and its
+> workflow is dispatch-only, so the first task is checking whether it passes,
+> not writing specs.
+
 **Where the work goes** `chemotion_ELN`, in the existing Cypress suite under
 `spec/cypress/end_to_end/`. Not in this repo. Tests live with the code they
 test, and a suite in a separate repo always tests a version it does not

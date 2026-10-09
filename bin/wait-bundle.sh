@@ -6,6 +6,7 @@
 #   ./bin/wait-bundle.sh present '<string the new code contains>'
 #   ./bin/wait-bundle.sh absent  '<string the old code contained>'
 . "$(dirname "$0")/_common.sh"
+local_only
 mode="${1:?usage: wait-bundle.sh present|absent <marker>}"
 marker="${2:?missing marker}"
 url="http://localhost:${ELN_DEV_SERVER_PORT:-3036}/packs/js/application.js"

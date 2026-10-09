@@ -11,7 +11,10 @@ name: Doc impact
 
 on:
   pull_request_target:
-    types: [labeled]
+    # Opened: every new PR gets a verdict, which is what makes the pipeline
+    # useful without anyone remembering to label. Labeled: a verdict after the
+    # fact, when someone classifies an older PR.
+    types: [opened, labeled]
 
 permissions:
   contents: read
@@ -19,10 +22,13 @@ permissions:
 
 jobs:
   triage:
-    # Only these labels, and only once per labelling event.
+    # Every new PR; on a labelling event, only the labels worth a second look.
+    # Draft PRs are skipped - they change too often to be worth a verdict.
     if: >-
-      contains(fromJSON('["new feature","enhancement","bug"]'),
-               github.event.label.name)
+      github.event.pull_request.draft == false &&
+      (github.event.action == 'opened' ||
+       contains(fromJSON('["new feature","enhancement","bug"]'),
+                github.event.label.name))
     uses: ComPlat/chemotion_agent_ops/.github/workflows/doc-impact-triage.yml@main
     with:
       pr: ${{ github.event.pull_request.number }}

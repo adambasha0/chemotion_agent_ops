@@ -69,6 +69,9 @@ def render(task, items):
                         f'<dt>sha256</dt><dd>{html.escape(str(meta.get("sha256", "—"))[:16])}…</dd></dl>')
             rows.append(f'<p class="{cls}">{len(a)} assertion(s) passed'
                         + ('' if a else ' — publish.sh will refuse this') + '</p>')
+            if meta.get('kind') != 'png' and meta.get('start_marked') is False:
+                rows.append('<p class="bad">the take was not marked: it opens on '
+                            'the navigation that led to the subject</p>')
             if a:
                 rows.append('<ul>' + ''.join(f'<li>{html.escape(x)}</li>' for x in a) + '</ul>')
         src = embed(path, ext)

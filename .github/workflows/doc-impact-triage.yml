@@ -6,8 +6,12 @@
 #     Settings > Actions > "Accessible from repositories in the organization")
 #   - that the calling workflow passes a token with pull-requests: write
 #
-# Called from chemotion_ELN; see integration/eln-side-snippet.yml.
-# It comments and nothing else: no commits, no PRs, in either repo.
+# Called from chemotion_ELN on every new PR, and on the labels worth a second
+# look; see integration/eln-side-snippet.yml. It comments and nothing else: no
+# commits, no PRs, in either repo.
+#
+# One comment per PR, edited in place on later runs, so a PR that gets labelled
+# after opening does not collect a second verdict.
 name: Doc impact triage
 
 on:
@@ -82,15 +86,22 @@ jobs:
             Write your comment to /tmp/triage.md. Do not edit any file in this
             checkout, do not commit, and do not open a pull request.
 
-      - name: Post the comment
+      - name: Post or update the comment
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ inputs.pr }}
         run: |
-          if [ -s /tmp/triage.md ]; then
-            gh pr comment "$PR" --body-file /tmp/triage.md
+          set -euo pipefail
+          [ -s /tmp/triage.md ] || { echo "triage produced nothing" >&2; exit 1; }
+          # A marker so a re-run edits its own comment instead of adding one.
+          printf '\n<!-- doc-impact-triage -->\n' >> /tmp/triage.md
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
+                 --jq '.[] | select(.body | contains("<!-- doc-impact-triage -->")) | .id' \
+               | head -1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" \
+              -F body=@/tmp/triage.md
           else
-            echo "triage produced nothing; not commenting" >&2
-            exit 1
+            gh pr comment "$PR" --body-file /tmp/triage.md
           fi

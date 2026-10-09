@@ -5,6 +5,7 @@
 # NewCops: enable, so a lockfile several minor versions behind CI is exactly
 # the gap where offences are invisible locally and fail the build.
 . "$(dirname "$0")/_common.sh"
+local_only
 GH=/home/ubuntu/app/tmp/cigems
 docker exec -e GEM_HOME=$GH "$APP" bash -lc \
   "gem list -i rubocop >/dev/null 2>&1 || gem install --no-document rubocop rubocop-rspec rubocop-rails rubocop-performance"

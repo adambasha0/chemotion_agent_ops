@@ -7,4 +7,5 @@
 # DatabaseCleaner.clean_with(:truncation) erroring outside of examples. That is
 # contention, not a regression: re-run before believing it.
 . "$(dirname "$0")/_common.sh"
+local_only
 docker exec "$APP" bash -lc "cd /home/ubuntu/app && RAILS_ENV=test bundle exec rspec $*"

@@ -12,6 +12,7 @@
 #      recompiling and it pins pre-rebuild chunk names, after which the page
 #      asks for a chunk that no longer exists and paints blank.
 . "$(dirname "$0")/_common.sh"
+local_only
 
 rm -rf "$ELN_TREE"/tmp/cache/bootsnap* || true
 docker exec "$APP" bash -lc \

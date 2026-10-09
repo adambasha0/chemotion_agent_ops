@@ -9,6 +9,7 @@
 # It will not write the source database, will not touch the source homedir
 # volume, and will not check out anything in the primary checkout.
 . "$(dirname "$0")/_common.sh"
+local_only
 need ELN_REPO ELN_TREE ELN_BRANCH ELN_PG_CONTAINER ELN_SOURCE_DB ELN_DB \
      ELN_HOMEDIR_VOLUME ELN_SOURCE_VOLUME ELN_NETWORK
 

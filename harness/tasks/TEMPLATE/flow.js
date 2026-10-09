@@ -55,8 +55,10 @@ const {
 
     // 3. MARK THE SUBJECT.
     //
-    // Everything before this - navigation, dashboards, a profile overlay - is
-    // dropped by the encoder. Call it once the screen under discussion is up.
+    // Everything before this - the sign-in, the landing page, the collection
+    // tree, a profile overlay - is dropped by the encoder. Call it on the
+    // screen a reader would expect to open on, not at ground zero. A flow that
+    // never calls it records start_marked: false and the review page says so.
     drv.markStart();
 
     // 4. ACT. Every state change follows a visible click.
@@ -71,6 +73,11 @@ const {
     //
     // Never bare fill() or selectOption(): a value that changes with no click
     // is exactly the "it happened by itself" frame readers complain about.
+    //
+    // The tempo comes from PACE in lib.js - the pointer sits 1.5 s on a
+    // control, the effect renders for 0.6 s, the screen holds 1.5 s. Override
+    // a pause only to make it LONGER; a per-call pause under PACE is how a
+    // pacing change gets silently undone.
     const tab = page.locator('[role="tab"]').filter({ hasText: /^Inventory$/ }).first();
     await tab.waitFor({ state: 'visible', timeout: 30000 });
     await drv.clickPlain(tab, { pauseAfter: 2500 });
