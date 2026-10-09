@@ -121,6 +121,7 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           PR: ${{ inputs.pr }}
           HAVE_KEY: ${{ steps.key.outputs.have }}
         run: |
@@ -132,13 +133,19 @@ jobs:
           # A marker so a re-run edits its own comment instead of adding one.
           printf '\n<!-- doc-impact-triage -->\n' >> /tmp/triage.md
           # Finding the previous comment is an optimisation, not the job:
-          # tolerate a failure here rather than losing the comment entirely.
-          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+          # tolerate a failure rather than losing the comment entirely.
+          id=$(gh api "repos/$GH_REPO/issues/$PR/comments" --paginate \
                  --jq '.[] | select(.body | contains("<!-- doc-impact-triage -->")) | .id' \
                2>/tmp/list.err | head -1 || true)
-          [ -s /tmp/list.err ] && { echo "could not list comments:" >&2; cat /tmp/list.err >&2; }
-          if [ -n "${id:-}" ]; then
-            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@/tmp/triage.md
-          else
-            gh pr comment "$PR" --body-file /tmp/triage.md
+          if [ -s /tmp/list.err ]; then
+            echo "could not list comments:" >&2; cat /tmp/list.err >&2
           fi
+          # gh api, not `gh pr comment`: the latter resolves the repository from
+          # a git remote, and this workspace has no checkout at its root - only
+          # ops/ and saurus/ - so it dies with "not a git repository".
+          if [ -n "${id:-}" ]; then
+            gh api -X PATCH "repos/$GH_REPO/issues/comments/$id" -F body=@/tmp/triage.md --silent
+          else
+            gh api -X POST "repos/$GH_REPO/issues/$PR/comments" -F body=@/tmp/triage.md --silent
+          fi
+          echo "comment posted on #$PR"
