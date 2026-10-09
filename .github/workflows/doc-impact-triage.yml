@@ -1,17 +1,18 @@
 # Agent 1: comment on a chemotion_ELN PR saying whether the docs need changing.
 #
-# UNTESTED SKELETON. Nothing in this file has run. Before trusting it, verify:
-#   - the inputs and version of anthropics/claude-code-action against its README
-#   - that this repo is allowed as a reusable workflow source (private repos need
-#     Settings > Actions > "Accessible from repositories in the organization")
-#   - that the calling workflow passes a token with pull-requests: write
-#
 # Called from chemotion_ELN on every new PR, and on the labels worth a second
 # look; see integration/eln-side-snippet.yml. It comments and nothing else: no
 # commits, no PRs, in either repo.
 #
-# One comment per PR, edited in place on later runs, so a PR that gets labelled
-# after opening does not collect a second verdict.
+# Two halves. The mechanical pre-triage is deterministic and always runs: it
+# classifies the changed files, extracts the user-facing strings the diff adds
+# and removes, and searches the documentation trees for the removed ones. The
+# agent then reviews that evidence, if an API key is configured. Without a key
+# the comment is the mechanical half alone, clearly labelled.
+#
+# The PR's code is never checked out. The diff comes from the API, so nothing
+# from an untrusted branch is written to disk or executed - which matters,
+# because pull_request_target runs with write permissions.
 name: Doc impact triage
 
 on:
@@ -28,7 +29,9 @@ on:
         default: main
     secrets:
       ANTHROPIC_API_KEY:
-        required: true
+        # Optional. Without it the mechanical pre-triage still runs and still
+        # comments; the agent's judgement is an addition, not a dependency.
+        required: false
 
 permissions:
   contents: read
@@ -38,40 +41,57 @@ jobs:
   triage:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out the ELN at the PR head
+      - name: Check out the agent rules and scripts
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          repository: adambasha0/chemotion_agent_ops
+          path: ops
 
-      - name: Check out the docs site beside it
+      - name: Check out the docs site
         uses: actions/checkout@v4
         with:
           repository: ComPlat/chemotion_saurus
           ref: ${{ inputs.saurus_ref }}
           path: saurus
 
-      - name: Check out the agent rules
-        uses: actions/checkout@v4
-        with:
-          repository: adambasha0/chemotion_agent_ops
-          path: ops
-
       - name: Collect the diff
         id: diff
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           PR: ${{ inputs.pr }}
         run: |
           set -euo pipefail
-          base=$(gh pr view "$PR" --json baseRefOid -q .baseRefOid)
-          head=$(gh pr view "$PR" --json headRefOid -q .headRefOid)
-          echo "base=$base" >> "$GITHUB_OUTPUT"
-          echo "head=$head" >> "$GITHUB_OUTPUT"
-          # Three-dot: what the PR adds, not what main moved on by.
-          git diff "$base...$head" > /tmp/pr.diff
-          wc -l /tmp/pr.diff
+          gh pr view "$PR" --json baseRefOid,headRefOid \
+            --jq 'to_entries[] | "\(.key)=\(.value)"' >> "$GITHUB_OUTPUT"
+          # From the API, not from a checkout: the PR's code never lands on disk.
+          gh pr diff "$PR" --patch > /tmp/pr.diff
+          wc -l < /tmp/pr.diff
+
+      - name: Mechanical pre-triage
+        run: |
+          set -euo pipefail
+          python3 ops/scripts/pre_triage.py \
+            --diff /tmp/pr.diff --docs saurus \
+            --pr '${{ inputs.pr }}' \
+            --range '${{ steps.diff.outputs.baseRefOid }}..${{ steps.diff.outputs.headRefOid }}' \
+            > /tmp/triage.md
+          cat /tmp/triage.md
+
+      - name: Is an API key available?
+        id: key
+        env:
+          KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "${KEY:-}" ]; then
+            echo "have=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "have=no" >> "$GITHUB_OUTPUT"
+            echo "no ANTHROPIC_API_KEY: posting the mechanical pre-triage alone"
+          fi
 
       - name: Triage
+        if: steps.key.outputs.have == 'yes'
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -81,19 +101,30 @@ jobs:
 
             The diff is at /tmp/pr.diff. The documentation site is checked out
             at ./saurus. The PR is #${{ inputs.pr }}, commit range
-            ${{ steps.diff.outputs.base }}..${{ steps.diff.outputs.head }}.
+            ${{ steps.diff.outputs.baseRefOid }}..${{ steps.diff.outputs.headRefOid }}.
 
-            Write your comment to /tmp/triage.md. Do not edit any file in this
-            checkout, do not commit, and do not open a pull request.
+            /tmp/triage.md already holds a mechanical pre-triage: the file
+            classification, the user-facing strings this diff adds and removes,
+            and which documentation pages still use a removed string. Treat it
+            as evidence to check, not as conclusions to repeat — its string
+            matching is literal and it has looked at no screen.
+
+            Rewrite /tmp/triage.md as the full comment, keeping any mechanical
+            finding you confirm and saying where you disagree. Do not edit any
+            other file, do not commit, and do not open a pull request.
 
       - name: Post or update the comment
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ inputs.pr }}
+          HAVE_KEY: ${{ steps.key.outputs.have }}
         run: |
           set -euo pipefail
           [ -s /tmp/triage.md ] || { echo "triage produced nothing" >&2; exit 1; }
+          if [ "$HAVE_KEY" != "yes" ]; then
+            printf '\n> No `ANTHROPIC_API_KEY` is configured for this repository, so this is the mechanical pre-triage only — no agent read the diff.\n' >> /tmp/triage.md
+          fi
           # A marker so a re-run edits its own comment instead of adding one.
           printf '\n<!-- doc-impact-triage -->\n' >> /tmp/triage.md
           id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \

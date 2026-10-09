@@ -10,7 +10,9 @@ PR labelled
         │
         │  calls reusable workflow
         └──────────────────────────────▶ Agent 1  triage
-                                          reads the diff + the docs
+                                          pre_triage.py: deterministic,
+                                            no model, always runs
+                                          then the agent reviews it
                                           no instance, seconds
         ◀───────────────────────────────  one comment: needed / check / none
         │
@@ -22,6 +24,7 @@ PR labelled
                                           runs the flows
                                           evidence gate ─── fails here, stops
                                           writes the prose
+                                          stops the instance (always)
                                                       │
                                                       └────────▶ DRAFT PR
                                                                  human reviews
@@ -71,6 +74,8 @@ flow then has to build its state through the app's own API and say so. See
 | `bin/capture.sh`, `review.sh`, `publish.sh` | ran for every asset currently in the docs |
 | `harness/lib/make_review.py` | rewritten here to discover tasks instead of carrying a hand-written list; smoke-tested only |
 | `rules/*`, `agents/*` | written down from practice; never executed as prompts |
+| `scripts/pre_triage.py` | run against two real diffs; catches the case that matters (docs naming a removed control, in all three trees) |
+| `bin/teardown.sh` | written here; the compose half is the inverse of a command that ran many times, the Dokploy half is unverified |
 | `bin/dokploy.sh` | **unverified API paths.** `--dry-run` prints the calls; confirm them against your Dokploy |
 | `docs/DOKPLOY.md` | procedure A executed end to end; procedure B's values read from the compose file |
 | `.github/workflows/*` | **untested skeletons.** Each names what to verify at the top |

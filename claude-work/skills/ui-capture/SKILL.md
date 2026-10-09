@@ -1,8 +1,3 @@
-<!-- Copy of the ui-capture skill from the author's Claude profile, so this
-repo is self-contained for an agent that does not have it installed. The
-profile copy is the original; if they diverge, prefer this one, which is
-versioned. -->
-
 ---
 name: ui-capture
 description: How to drive a real app with a browser to produce trustworthy evidence - documentation screenshots and animations, or end-to-end feature checks. Use whenever recording GIFs/videos/screenshots of a UI, writing E2E flows, or asked to show that a feature works. Covers what to assert, how to pace a recording so a human can follow it, and the traps that silently produce convincing but wrong media.

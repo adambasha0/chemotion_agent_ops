@@ -2,6 +2,7 @@
 # Deploy, redeploy or check an app on Dokploy.
 #
 #   ./bin/dokploy.sh deploy  eln|saurus [<branch>]
+#   ./bin/dokploy.sh stop    eln|saurus      # when the job is done
 #   ./bin/dokploy.sh status  eln|saurus
 #   ./bin/dokploy.sh wait    eln|saurus      # until ELN_BASE answers 200
 #   ./bin/dokploy.sh --dry-run deploy eln    # print the calls, send nothing
@@ -32,6 +33,7 @@ esac
 
 DEPLOY_PATH="${DOKPLOY_DEPLOY_PATH:-/api/${KIND}.deploy}"
 STATUS_PATH="${DOKPLOY_STATUS_PATH:-/api/${KIND}.one}"
+STOP_PATH="${DOKPLOY_STOP_PATH:-/api/${KIND}.stop}"
 
 call() { # call <path> <json>
   local url="$DOKPLOY_URL$1"
@@ -54,6 +56,14 @@ case "$CMD" in
     call "$DEPLOY_PATH" "{\"${KIND}Id\":\"$APP_NAME\"}"
     echo
     echo "deploy requested for $APP_NAME${BRANCH:+ on $BRANCH}"
+    ;;
+  stop)
+    # Stop, not delete: the service keeps its configuration so the next run is
+    # a deploy, not a fresh setup. Leaving an ELN running costs several GB for
+    # nothing.
+    call "$STOP_PATH" "{\"${KIND}Id\":\"$APP_NAME\"}"
+    echo
+    echo "stop requested for $APP_NAME"
     ;;
   status)
     call "$STATUS_PATH" "{\"${KIND}Id\":\"$APP_NAME\"}"

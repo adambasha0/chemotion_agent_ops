@@ -104,7 +104,24 @@ expect to open on — not ground zero. A flow that never calls it records
 `start_marked: false` in its sidecar, the review page flags it, and the run
 warns; nothing silently ships a take that opens on the way there.
 
-## C. Ship
+## C. Stop the instance
+
+```bash
+./bin/teardown.sh              # stops the deployment, or the local stack
+./bin/teardown.sh --destroy    # local: also drop the DB copy, volume, worktree
+```
+
+Run it when the task is done, not at the end of the day. A forgotten ELN holds
+several GB of RAM, a connection pool and a delayed_job worker for nothing, and
+on a shared machine that is what makes the next person's build get OOM-killed.
+The capture workflow runs it with `if: always()`, so a failed or cancelled job
+still releases the instance.
+
+`--destroy` refuses to drop anything whose name matches the source database or
+the source volume, so a misconfigured `eln.env` cannot take the development
+data with it.
+
+## D. Ship
 
 ```
 ./bin/capture.sh <task> | 'admin-*' | all    # serial: shared DB
@@ -114,7 +131,7 @@ warns; nothing silently ships a take that opens on the way there.
 
 Then choose the docs tree by `lastVersion` — see `rules/saurus-docs.md`.
 
-## D. E2E without media
+## E. E2E without media
 
 Same flow with the camera off: drop the pointer, the pacing and `shot()`; keep
 the fixture and every assertion. Plain `locator.click()`. Assert the DOM for

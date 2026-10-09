@@ -95,6 +95,10 @@ jobs:
           ELN_BRANCH="$ELN_REF" ./bin/eln-up.sh
           ./bin/eln-restart.sh
 
+      # A self-hosted runner keeps whatever the last job left behind, so the
+      # cleanup below has to be unconditional rather than part of the happy
+      # path. See the "Stop the instance" step at the end.
+
       - name: Confirm the instance serves the ref
         working-directory: ops
         run: |
@@ -147,6 +151,14 @@ jobs:
 
             Captured against ELN ${{ env.ELN_REF }}. Every asset carries a
             provenance sidecar; the PR body lists the assertions behind each.
+
+      # Always, and before the artifact upload so a cancelled or failed run
+      # still releases the instance. An ELN left running holds several GB, a
+      # connection pool and a worker for nothing.
+      - name: Stop the instance
+        if: always()
+        working-directory: ops
+        run: ./bin/teardown.sh || echo "teardown failed; check the instance by hand"
 
       - name: Upload the review page and the sidecars
         if: always()

@@ -8,8 +8,17 @@
 ## Inputs you are given
 
 - the PR number, its labels, its title and body
-- `git diff <base>...<head>` for the PR
+- the PR's diff, from the API — the branch's code is never checked out
 - a checkout of `chemotion_saurus`
+- `/tmp/triage.md`, already holding a **mechanical pre-triage**:
+  `scripts/pre_triage.py` has classified the changed files, extracted the
+  user-facing strings the diff adds and removes, and searched every
+  documentation tree for the removed ones
+
+That last input is evidence, not conclusions. Its matching is literal, it has
+looked at no screen, and it cannot tell a renamed label from a moved one. Keep
+what you confirm, say where you disagree, and add what only reading the diff
+can tell you.
 
 ## What to produce
 
