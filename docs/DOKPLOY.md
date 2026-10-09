@@ -97,6 +97,35 @@ a flow has to build its state through the app's own API and must say in the
 task that it does — or, where neither is possible, run against the seeded data
 and assert what the seeds actually contain rather than assuming.
 
+### Two things p2d does not give you
+
+**No job worker.** `docker-compose.p2d.yml` defines `db`, `app` and
+`configure`; `app` carries `CONFIG_ROLE=combine` and the base image is meant to
+start delayed_job itself. Anything asynchronous - SDS extraction, reports,
+exports - spins forever if it did not, which reads as a broken feature rather
+than a missing process. Start one by hand (it dies on the next redeploy), or
+add a worker service to the compose you use for capture.
+
+**No test harness.** `cypress-on-rails` is in the Gemfile's `:test` group, so a
+production deployment does not install it and the `/__cypress__/command`
+endpoint does not exist. **The existing Cypress suite cannot run against a
+Dokploy instance**, and should not: it would mean testing a production build
+with no fixture control against a shared database. E2E belongs in CI with a
+throwaway test database - `.github/workflows/end-to-end.yml` in the ELN already
+does that, currently on `workflow_dispatch` only.
+
+What Dokploy logs *are* good for is explaining a failure the browser cannot:
+whether the worker started, whether a migration ran, what a 500 actually said.
+`./bin/dokploy.sh logs eln`, and the capture workflow pulls them automatically
+when a run fails.
+
+### Image pinning
+
+The compose file pins `db:3.1.2` and the base `eln-3.1.2`. A branch that needs
+a newer base image, or whose migrations run past that image's schema, can fail
+to boot for reasons that look like the branch's fault. Check the pins before
+blaming the code.
+
 Dokploy instances are disposable and guarantee nothing about uptime or
 persistence. Keep test accounts dummy and real data out.
 

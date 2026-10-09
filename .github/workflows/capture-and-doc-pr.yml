@@ -152,6 +152,16 @@ jobs:
             Captured against ELN ${{ env.ELN_REF }}. Every asset carries a
             provenance sidecar; the PR body lists the assertions behind each.
 
+      # The browser's view often does not explain a failure against a
+      # deployment: a stalled job queue, a migration that did not run, a 500
+      # whose body never reached the page. Pull the container log while the
+      # instance is still up.
+      - name: Collect the instance log on failure
+        if: failure() && env.ELN_PROVIDER == 'dokploy'
+        working-directory: ops
+        continue-on-error: true
+        run: ./bin/dokploy.sh logs eln > /tmp/instance.log 2>&1 || true
+
       # Always, and before the artifact upload so a cancelled or failed run
       # still releases the instance. An ELN left running holds several GB, a
       # connection pool and a worker for nothing.
@@ -168,3 +178,4 @@ jobs:
           path: |
             ops/review.html
             ops/harness/tasks/*/out/*.json
+            /tmp/instance.log

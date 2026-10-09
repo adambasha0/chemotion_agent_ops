@@ -4,6 +4,7 @@
 #   ./bin/dokploy.sh deploy  eln|saurus [<branch>]
 #   ./bin/dokploy.sh stop    eln|saurus      # when the job is done
 #   ./bin/dokploy.sh status  eln|saurus
+#   ./bin/dokploy.sh logs    eln|saurus      # the deployed container's log
 #   ./bin/dokploy.sh wait    eln|saurus      # until ELN_BASE answers 200
 #   ./bin/dokploy.sh --dry-run deploy eln    # print the calls, send nothing
 #
@@ -64,6 +65,14 @@ case "$CMD" in
     call "$STOP_PATH" "{\"${KIND}Id\":\"$APP_NAME\"}"
     echo
     echo "stop requested for $APP_NAME"
+    ;;
+  logs)
+    # Useful when a capture or a smoke check fails against a deployment and
+    # the browser's view does not explain it: did the job worker start, did a
+    # migration run, what did the 500 actually say. Observability, not a test
+    # harness - see docs/DOKPLOY.md on why the Cypress suite cannot run here.
+    call "${DOKPLOY_LOGS_PATH:-/api/${KIND}.logs}" \
+      "{\"${KIND}Id\":\"$APP_NAME\",\"tail\":${DOKPLOY_LOG_LINES:-500}}"
     ;;
   status)
     call "$STATUS_PATH" "{\"${KIND}Id\":\"$APP_NAME\"}"
