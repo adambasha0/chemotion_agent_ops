@@ -1,0 +1,96 @@
+# Agent 1: comment on a chemotion_ELN PR saying whether the docs need changing.
+#
+# UNTESTED SKELETON. Nothing in this file has run. Before trusting it, verify:
+#   - the inputs and version of anthropics/claude-code-action against its README
+#   - that this repo is allowed as a reusable workflow source (private repos need
+#     Settings > Actions > "Accessible from repositories in the organization")
+#   - that the calling workflow passes a token with pull-requests: write
+#
+# Called from chemotion_ELN; see integration/eln-side-snippet.yml.
+# It comments and nothing else: no commits, no PRs, in either repo.
+name: Doc impact triage
+
+on:
+  workflow_call:
+    inputs:
+      pr:
+        description: PR number in chemotion_ELN
+        required: true
+        type: number
+      saurus_ref:
+        description: branch of chemotion_saurus to read
+        required: false
+        type: string
+        default: main
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the ELN at the PR head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check out the docs site beside it
+        uses: actions/checkout@v4
+        with:
+          repository: ComPlat/chemotion_saurus
+          ref: ${{ inputs.saurus_ref }}
+          path: saurus
+
+      - name: Check out the agent rules
+        uses: actions/checkout@v4
+        with:
+          repository: ComPlat/chemotion_agent_ops
+          path: ops
+
+      - name: Collect the diff
+        id: diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+        run: |
+          set -euo pipefail
+          base=$(gh pr view "$PR" --json baseRefOid -q .baseRefOid)
+          head=$(gh pr view "$PR" --json headRefOid -q .headRefOid)
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "head=$head" >> "$GITHUB_OUTPUT"
+          # Three-dot: what the PR adds, not what main moved on by.
+          git diff "$base...$head" > /tmp/pr.diff
+          wc -l /tmp/pr.diff
+
+      - name: Triage
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Follow ops/agents/01-doc-impact-triage.md exactly. Read
+            ops/rules/saurus-docs.md before naming any page.
+
+            The diff is at /tmp/pr.diff. The documentation site is checked out
+            at ./saurus. The PR is #${{ inputs.pr }}, commit range
+            ${{ steps.diff.outputs.base }}..${{ steps.diff.outputs.head }}.
+
+            Write your comment to /tmp/triage.md. Do not edit any file in this
+            checkout, do not commit, and do not open a pull request.
+
+      - name: Post the comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+        run: |
+          if [ -s /tmp/triage.md ]; then
+            gh pr comment "$PR" --body-file /tmp/triage.md
+          else
+            echo "triage produced nothing; not commenting" >&2
+            exit 1
+          fi

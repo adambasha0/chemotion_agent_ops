@@ -1,0 +1,13 @@
+{
+  "name": "chemotion-agent-ops",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Scripts and workflows for running Chemotion, capturing evidence, and keeping the docs in step.",
+  "scripts": {
+    "postinstall": "playwright install chromium"
+  },
+  "dependencies": {
+    "ffmpeg-static": "^5.2.0",
+    "playwright": "1.63.0"
+  }
+}

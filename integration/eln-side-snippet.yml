@@ -1,0 +1,30 @@
+# Add this to chemotion_ELN as .github/workflows/doc-impact.yml.
+#
+# It is the only change the ELN repo needs for the triage half: a label on a PR
+# calls the reusable workflow in chemotion_agent_ops, which comments. Nothing
+# in the ELN repo is written.
+#
+# UNTESTED. Verify the reusable-workflow reference resolves (private repos must
+# allow it under Settings > Actions) and that ANTHROPIC_API_KEY exists as an
+# org or repo secret.
+name: Doc impact
+
+on:
+  pull_request_target:
+    types: [labeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  triage:
+    # Only these labels, and only once per labelling event.
+    if: >-
+      contains(fromJSON('["new feature","enhancement","bug"]'),
+               github.event.label.name)
+    uses: ComPlat/chemotion_agent_ops/.github/workflows/doc-impact-triage.yml@main
+    with:
+      pr: ${{ github.event.pull_request.number }}
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

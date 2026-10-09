@@ -1,0 +1,129 @@
+# Agent 2: boot the ELN, capture evidence, open a DRAFT PR on chemotion_saurus.
+#
+# UNTESTED SKELETON. Nothing in this file has run. Before trusting it, verify:
+#   - a self-hosted runner labelled [self-hosted, chemotion-capture] exists and
+#     can reach docker, the postgres container and the source database
+#   - env/eln.env is present on that runner OUTSIDE the workspace, and readable
+#   - the app image the compose file expects is built on that runner
+#   - the GitHub App / token can push a branch to chemotion_saurus and open a PR
+#   - the inputs and version of anthropics/claude-code-action
+#
+# GitHub-hosted runners cannot do this job: it needs a seeded database, a
+# worktree with the gitignored config set, 2 GB of node_modules, a delayed_job
+# worker and several minutes of boot.
+name: Capture and document
+
+on:
+  workflow_dispatch:
+    inputs:
+      eln_ref:
+        description: ELN ref to boot and film (branch, tag or SHA)
+        required: true
+      pr:
+        description: the ELN PR this follows from, for the PR body
+        required: false
+      note:
+        description: what to document, if the triage comment is not enough
+        required: false
+  repository_dispatch:
+    types: [capture-and-document]
+
+permissions:
+  contents: read
+
+concurrency:
+  # One capture at a time: the flows share one instance and one database, and
+  # two runs at once corrupt each other's fixtures.
+  group: chemotion-capture
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    runs-on: [self-hosted, chemotion-capture]
+    timeout-minutes: 120
+    env:
+      ELN_REF: ${{ inputs.eln_ref || github.event.client_payload.eln_ref }}
+      ELN_PR: ${{ inputs.pr || github.event.client_payload.pr }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: ops
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ComPlat/chemotion_saurus
+          path: saurus
+          fetch-depth: 0
+
+      - name: Install the harness
+        working-directory: ops
+        run: npm ci || npm install
+
+      - name: Boot the ELN on the ref
+        working-directory: ops
+        env:
+          ELN_ENV_FILE: ${{ runner.temp }}/../eln.env   # kept off the workspace
+        run: |
+          set -euo pipefail
+          # The ref, not a branch name: a branch tip moves and the sidecar
+          # would then record a SHA nobody can reproduce.
+          ELN_BRANCH="$ELN_REF" ./bin/eln-up.sh
+          ./bin/eln-restart.sh
+
+      - name: Capture
+        working-directory: ops
+        env:
+          ELN_ENV_FILE: ${{ runner.temp }}/../eln.env
+        run: ./bin/capture.sh all
+
+      - name: Refuse to continue without evidence
+        working-directory: ops
+        run: python3 harness/lib/make_review.py   # non-zero if any asset lacks assertions
+
+      - name: Publish the verified assets into the docs checkout
+        working-directory: ops
+        env:
+          ELN_ENV_FILE: ${{ runner.temp }}/../eln.env
+        run: ./bin/publish.sh "${{ github.workspace }}/saurus/static/img"
+
+      - name: Write the documentation
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Follow ops/agents/02-capture-and-document.md from step 6 onward —
+            the instance is booted and the assets are already published into
+            ./saurus/static/img. Read ops/rules/saurus-docs.md to choose the
+            tree, and ops/rules/evidence-gate.md for what the PR body must say.
+
+            ELN ref: ${{ env.ELN_REF }}. ELN PR: ${{ env.ELN_PR }}.
+            Extra instruction, if any: ${{ inputs.note }}
+
+            Edit only files under ./saurus. Validate changed MDX by compiling it
+            with @mdx-js/mdx; do not run the full Docusaurus build.
+            Write the PR body to /tmp/pr-body.md.
+
+      - name: Open a draft PR
+        uses: peter-evans/create-pull-request@v6
+        with:
+          path: saurus
+          token: ${{ secrets.SAURUS_PR_TOKEN }}
+          branch: docs/auto-${{ env.ELN_REF }}
+          draft: true
+          labels: documentation, needs-human-review
+          title: "docs: ${{ env.ELN_REF }}"
+          body-path: /tmp/pr-body.md
+          commit-message: |
+            docs: update for ELN ${{ env.ELN_REF }}
+
+            Captured against ELN ${{ env.ELN_REF }}. Assets carry provenance
+            sidecars; see the PR body for the assertions behind each one.
+
+      - name: Upload the review page and the sidecars
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capture-evidence
+          path: |
+            ops/review.html
+            ops/harness/tasks/*/out/*.json

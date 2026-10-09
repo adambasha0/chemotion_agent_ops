@@ -1,0 +1,115 @@
+# An isolated ELN stack for capture and E2E runs.
+#
+# Isolation is the point. Every value below comes from env/eln.env so that this
+# stack never shares a tree, a database, a homedir volume or a port with the
+# instance someone is developing on.
+#
+#   docker compose --env-file env/eln.env -p "$ELN_PROJECT" \
+#     -f env/compose.capture.yml up -d app webpacker worker
+#
+# Reuses the development stack's postgres over its network, read-only for the
+# source database; writes only the copy named in ELN_DB.
+
+name: ${ELN_PROJECT:-chemotion_capture}
+
+x-common-volumes: &common-volumes
+  - homedir:/home/ubuntu
+  - ${ELN_TREE}:/home/ubuntu/app
+
+x-common-env: &common-env
+  # database.yml hardcodes chemotion_dev for development, so the copy is
+  # selected with DATABASE_URL, which Rails merges over the YAML.
+  DATABASE_URL: 'postgresql://postgres@postgres:5432/${ELN_DB}'
+  THOR_SILENCE_DEPRECATION: 'true'
+
+services:
+  # One-shot: reconcile the dependency delta between the branch and whatever
+  # the cloned volume and the copied node_modules carry. Usually a short
+  # incremental install, not a cold one. Deliberately does NOT run
+  # prepare-db.sh: that script reads database.yml with yq and would target the
+  # source database, which is not ours to write.
+  deps:
+    image: chemotion_eln_dev
+    environment: *common-env
+    env_file:
+      - ${ELN_TREE}/.env.development
+      - path: ${ELN_TREE}/.env
+        required: false
+    volumes: *common-volumes
+    working_dir: '/home/ubuntu/app'
+    command: bash -lc './prepare-rubygems.sh && ./prepare-nodejspkg.sh'
+    networks: [eln]
+
+  app:
+    image: chemotion_eln_dev
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+    environment:
+      <<: *common-env
+      # NOT `webpacker`. Every chemotion compose project registers that alias
+      # on the shared network, so the name round-robins between dev servers and
+      # Rails intermittently proxies /packs to another stack - which serves a
+      # different branch's UI. Pin the container name, which is unique.
+      SHAKAPACKER_DEV_SERVER_HOST: ${ELN_PROJECT:-chemotion_capture}-webpacker-1
+      SHAKAPACKER_DEV_SERVER_PORT: '3035'
+    env_file:
+      - ${ELN_TREE}/.env.development
+      - path: ${ELN_TREE}/.env
+        required: false
+    ports:
+      - '${ELN_PORT:-3001}:3000'
+    volumes: *common-volumes
+    working_dir: '/home/ubuntu/app'
+    command: bash -lc 'rm -f tmp/pids/server.pid && bundle exec rails s -p 3000 -b 0.0.0.0'
+    networks: [eln]
+
+  webpacker:
+    image: chemotion_eln_dev
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+    environment:
+      <<: *common-env
+      NODE_ENV: development
+      SHAKAPACKER_DEV_SERVER_HOST: '0.0.0.0'
+      SHAKAPACKER_DEV_SERVER_PORT: '3035'
+    env_file:
+      - ${ELN_TREE}/.env.development
+      - path: ${ELN_TREE}/.env
+        required: false
+    volumes: *common-volumes
+    working_dir: '/home/ubuntu/app'
+    command: bash -lc './bin/shakapacker-dev-server'
+    ports:
+      - '${ELN_DEV_SERVER_PORT:-3036}:3035'
+    networks: [eln]
+
+  # The delayed_job worker. Any feature that enqueues (SDS extraction, reports,
+  # exports) hangs forever without it, which reads as a broken UI.
+  worker:
+    image: chemotion_eln_dev
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+    environment: *common-env
+    env_file:
+      - ${ELN_TREE}/.env.development
+      - path: ${ELN_TREE}/.env
+        required: false
+    volumes: *common-volumes
+    working_dir: '/home/ubuntu/app'
+    command: bash -lc 'bundle exec rake jobs:work'
+    networks: [eln]
+
+volumes:
+  homedir:
+    name: ${ELN_HOMEDIR_VOLUME}
+    external: true
+
+networks:
+  # The primary stack's default network, so `postgres` resolves to its
+  # container. Reused, never created or removed by this file.
+  eln:
+    name: ${ELN_NETWORK}
+    external: true
