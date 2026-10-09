@@ -81,8 +81,27 @@ flow then has to build its state through the app's own API and say so. See
 | `bin/teardown.sh` | written here; the compose half is the inverse of a command that ran many times, the Dokploy half is unverified |
 | `bin/dokploy.sh` | **unverified API paths.** `--dry-run` prints the calls; confirm them against your Dokploy |
 | `docs/DOKPLOY.md` | procedure A executed end to end; procedure B's values read from the compose file |
-| `.github/workflows/*` | **untested skeletons.** Each names what to verify at the top |
+| `.github/workflows/doc-impact-triage.yml` | **run live** on adambasha0/chemotion_ELN_megorei PR #1, triggered by assignment: posted the comment, correctly reporting a renamed button going stale in all three docs trees. The agent step is still unexercised — no API key was configured |
+| `.github/workflows/issue-triage.yml` | the mechanical half shares the proven shape; the workflow itself not yet fired |
+| `.github/workflows/capture-and-doc-pr.yml` | **untested skeleton.** Names what to verify at the top |
 | self-hosted runner | does not exist, and the dokploy path does not need one |
+
+### What the live run proved, and what it did not
+
+Proved: the reusable workflow resolves across repositories, the diff comes from
+the API with no checkout of the branch, `pre_triage.py` runs on a hosted runner
+and finds the case that matters, and the comment lands on the right pull
+request through the assignment trigger.
+
+Not proved: the agent step. No `ANTHROPIC_API_KEY` was configured, so the
+comment was the mechanical half, labelled as such. That is the design — the
+plumbing does not depend on the model — but the prompt itself has still never
+run in CI.
+
+Two bugs only a live run would have found, both in the posting step:
+`gh pr comment` resolves the repository from a git remote and this workspace
+has no checkout at its root; and a `[ -s file ] && { ... }` guard exits the
+step under `set -e` when the file is *empty*, which is the happy path.
 
 The parameterisation is new: every script now reads `env/eln.env` instead of
 carrying one session's paths and passwords. Nothing has been re-run end to end
